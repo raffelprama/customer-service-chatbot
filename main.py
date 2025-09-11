@@ -1,10 +1,14 @@
 import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from server.routes import main_services
+from server.routes.chat import chat_router
+from server.routes.model_db import model_router
+from server.routes.history_db import history_router
 import uvicorn
 import os
 import logging
+import datetime
+
 os.makedirs('logs', exist_ok=True)
 
 app = FastAPI(
@@ -18,14 +22,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(main_services.generation_router)
-app.include_router(main_services.general_router)
+app.include_router(chat_router)
+app.include_router(model_router)
+app.include_router(history_router)
 
-@app.get('/')
-def ping():
-    return{'msg':'acknowledged'}
+@app.get("/health", tags=["Health"])
+def health_check():
+    return {
+        "status": "ok",
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
+    }
 
-# 
+# main
 
 if __name__ == '__main__':
     # Setup logging here
@@ -44,7 +52,7 @@ if __name__ == '__main__':
         def close(self):
             self.file_handler.close()
 
-    handler = FileAndConsoleHandler(f'./logs/{os.getenv('APP_NAME','my-app')}.log')
+    handler = FileAndConsoleHandler(f"./logs/{os.getenv('APP_NAME','my-app')}.log")
     handler.setLevel(logging.DEBUG)
 
     formatter = logging.Formatter('[%(asctime)s] - %(name)s - %(levelname)s - %(message)s')

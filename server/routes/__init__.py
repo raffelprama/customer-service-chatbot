@@ -1,1 +1,1 @@
-from . import main_services
+from . import chat

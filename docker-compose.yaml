@@ -1,11 +1,109 @@
-version: '3.3'
+version: '3.8'
+
 services:
-  app:
-    container_name: ${APP_NAME}
-    build: ./
-    restart: always
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: cs-chatbot-db
+    restart: unless-stopped
     environment:
-      - NUM_GPU=${NUM_GPU}
-      - MODEL_PATH=${MODEL_PATH}
+      POSTGRES_DB: ${DB_NAME:-chatbot}
+      POSTGRES_USER: ${DB_USER:-myuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-mypassword}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     ports:
-      - ${PORT}:5001
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - /mnt/d/user/Downloads/__administartion/synapsis/cs-chatbot/cs-chatbot/server/database/full_dump.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-myuser} -d ${DB_NAME:-chatbot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Ollama Service
+  ollama:
+    image: ollama/ollama:latest
+    container_name: cs-chatbot-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    # GPU support is optional - uncomment the deploy section if you have NVIDIA GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: ${NUM_GPU:-1}
+    #           capabilities: [gpu]
+
+  # Database Initialization Check
+  db-init:
+    image: postgres:15-alpine
+    container_name: cs-chatbot-db-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${DB_NAME:-chatbot}
+      PGUSER: ${DB_USER:-myuser}
+      PGPASSWORD: ${DB_PASSWORD:-mypassword}
+    command: |
+      sh -c "
+        echo 'Checking database initialization...'
+        psql -c 'SELECT COUNT(*) FROM chat_history;' || echo 'Database not ready yet'
+        psql -c 'SELECT COUNT(*) FROM product;' || echo 'Database not ready yet'
+        psql -c 'SELECT COUNT(*) FROM users;' || echo 'Database not ready yet'
+        psql -c 'SELECT COUNT(*) FROM garansi;' || echo 'Database not ready yet'
+        echo 'Database initialization check completed!'
+      "
+    restart: "no"
+
+  # Main Application
+  app:
+    container_name: CS-Chatbot
+    build: ./
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      - APP_NAME=CS-Chatbot
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DB_HOST=postgres
+      - DB_NAME=${DB_NAME:-chatbot}
+      - DB_USER=${DB_USER:-myuser}
+      - DB_PASSWORD=${DB_PASSWORD:-mypassword}
+      - DB_PORT=5432
+      - OLLAMA_HOST=http://ollama:11434
+      - NUM_GPU=${NUM_GPU:-1}
+      - MODEL_PATH=ollama
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./cs-chatbot/logs:/opt/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+    driver: local
+  ollama_data:
+    driver: local
