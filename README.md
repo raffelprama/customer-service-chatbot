@@ -38,8 +38,8 @@ Optional (for GPU inference):
 
 1) Clone the repository
 ```bash
-git clone https://github.com/your-org/cs-chatbot.git
-cd cs-chatbot/cs-chatbot
+git clone https://github.com/raffelprama/customer-service-chatbot.git
+cd customer-service-chatbot
 ```
 
 2) Start services
